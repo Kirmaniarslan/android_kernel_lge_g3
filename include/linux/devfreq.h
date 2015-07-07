@@ -51,10 +51,10 @@ struct devfreq_dev_status {
  * bound (greatest lower bound)
  */
 #define DEVFREQ_FLAG_LEAST_UPPER_BOUND		0x1
+#define DEVFREQ_FLAG_WAKEUP_MAXFREQ		0x2
 
-#define DEVFREQ_FLAG_FAST_HINT			0x2
-#define DEVFREQ_FLAG_SLOW_HINT			0x4
-#define DEVFREQ_FLAG_WAKEUP_MAXFREQ		0x8
+#define DEVFREQ_FLAG_FAST_HINT	0x2
+#define DEVFREQ_FLAG_SLOW_HINT	0x4
 
 /**
  * struct devfreq_governor_data - mapping to per device governor data
@@ -140,6 +140,10 @@ struct devfreq_governor {
 				u32 *flag);
 	int (*event_handler)(struct devfreq *devfreq,
 				unsigned int event, void *data);
+#ifdef CONFIG_LGE_DEVFREQ_DFPS
+	int (*init)(struct devfreq *this);
+	void (*exit)(struct devfreq *this);
+#endif
 };
 
 /**

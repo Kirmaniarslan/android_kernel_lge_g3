@@ -25,27 +25,20 @@ EXPORT_SYMBOL_GPL(power_supply_class);
 
 static struct device_type power_supply_dev_type;
 
-/**
- * power_supply_set_voltage_limit - set current limit
- * @psy:	the power supply to control
- * @limit:	current limit in uV from the power supply.
- *		0 will disable the power supply.
- *
- * This function will set a maximum supply current from a source
- * and it will disable the charger when limit is 0.
- */
-int power_supply_set_voltage_limit(struct power_supply *psy, int limit)
+#ifdef CONFIG_LGE_PM
+int power_supply_set_floated_charger(struct power_supply *psy,
+				int is_float)
 {
-	const union power_supply_propval ret = {limit,};
+	const union power_supply_propval ret = {is_float,};
 
-	if (psy->set_property)
-		return psy->set_property(psy, POWER_SUPPLY_PROP_VOLTAGE_MAX,
+	if (psy->set_event_property)
+		return psy->set_event_property(psy, POWER_SUPPLY_PROP_FLOATED_CHARGER,
 								&ret);
 
 	return -ENXIO;
 }
-EXPORT_SYMBOL(power_supply_set_voltage_limit);
-
+EXPORT_SYMBOL_GPL(power_supply_set_floated_charger);
+#endif
 
 /**
  * power_supply_set_current_limit - set current limit

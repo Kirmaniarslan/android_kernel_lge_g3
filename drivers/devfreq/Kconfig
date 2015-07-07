@@ -71,6 +71,15 @@ config DEVFREQ_GOV_MSM_ADRENO_TZ
 	  Sets the frequency using a "on-demand" algorithm.
 	  This governor is unlikely to be useful for other devices.
 
+config ADRENO_IDLER
+	tristate "MSM Adreno idler"
+	depends on DEVFREQ_GOV_MSM_ADRENO_TZ
+	help
+	  Uses a different calculation method on top of Adreno TZ
+	  just for calculating frequency for idle to reduce the
+	  wasted power coming from stock Adreno TZ while
+	  maintaining high-performance.
+
 config DEVFREQ_GOV_MSM_CPUFREQ
 	bool "MSM CPUfreq"
 	depends on CPU_FREQ_MSM
@@ -91,6 +100,13 @@ config DEVFREQ_GOV_MSM_CPUBW_HWMON
 	  useful for other devices.
 
 comment "DEVFREQ Drivers"
+
+config LGE_DEVFREQ_DFPS
+    bool "LG G3 Dynamic LCD Refresh Driver"
+    select ARCH_HAS_OPP
+    select DEVFREQ_GOV_SIMPLE_ONDEMAND
+    help
+      This adds the DEVFREQ driver for LG G3 display
 
 config ARM_EXYNOS4_BUS_DEVFREQ
 	bool "ARM Exynos4210/4212/4412 Memory Bus DEVFREQ Driver"

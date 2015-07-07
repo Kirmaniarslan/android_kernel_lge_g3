@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -281,20 +281,39 @@ static void _print_entry(struct kgsl_device *device, struct _mem_entry *entry)
 static void _check_if_freed(struct kgsl_iommu_device *iommu_dev,
 	unsigned long addr, unsigned int pid)
 {
-	unsigned long gpuaddr = addr;
-	unsigned long size = 0;
-	unsigned int flags = 0;
-
+	void *base = kgsl_driver.memfree_hist.base_hist_rb;
+	struct kgsl_memfree_hist_elem *wptr;
+	struct kgsl_memfree_hist_elem *p;
 	char name[32];
 	memset(name, 0, sizeof(name));
 
-	if (kgsl_memfree_find_entry(pid, &gpuaddr, &size, &flags)) {
-		kgsl_get_memory_usage(name, sizeof(name) - 1, flags);
-		KGSL_LOG_DUMP(iommu_dev->kgsldev, "---- premature free ----\n");
-		KGSL_LOG_DUMP(iommu_dev->kgsldev,
-			"[%8.8lX-%8.8lX] (%s) was already freed by pid %d\n",
-			gpuaddr, gpuaddr + size, name, pid);
+	mutex_lock(&kgsl_driver.memfree_hist_mutex);
+	wptr = kgsl_driver.memfree_hist.wptr;
+	p = wptr;
+	for (;;) {
+		if (p->size && p->pid == pid)
+			if (addr >= p->gpuaddr &&
+				addr < (p->gpuaddr + p->size)) {
+
+				kgsl_get_memory_usage(name, sizeof(name) - 1,
+					p->flags);
+				KGSL_LOG_DUMP(iommu_dev->kgsldev,
+					"---- premature free ----\n");
+				KGSL_LOG_DUMP(iommu_dev->kgsldev,
+					"[%8.8X-%8.8X] (%s) was already freed by pid %d\n",
+					p->gpuaddr,
+					p->gpuaddr + p->size,
+					name,
+					p->pid);
+			}
+		p++;
+		if ((void *)p >= base + kgsl_driver.memfree_hist.size)
+			p = (struct kgsl_memfree_hist_elem *) base;
+
+		if (p == kgsl_driver.memfree_hist.wptr)
+			break;
 	}
+	mutex_unlock(&kgsl_driver.memfree_hist_mutex);
 }
 
 static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
@@ -394,10 +413,17 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	if (!no_page_fault_log) {
 		KGSL_MEM_CRIT(iommu_dev->kgsldev,
 			"GPU PAGE FAULT: addr = %lX pid = %d\n", addr, pid);
+#ifdef QCT_TEMP_KGSL_PATCH
+		KGSL_MEM_CRIT(iommu_dev->kgsldev,
+		 "context = %d TTBR0 = %X FSR = %X FSYNR0 = %X FSYNR1 = %X(%s fault)\n",
+			iommu_dev->ctx_id, ptbase, fsr, fsynr0, fsynr1,
+			write ? "write" : "read");
+#else
 		KGSL_MEM_CRIT(iommu_dev->kgsldev,
 		 "context = %d FSR = %X FSYNR0 = %X FSYNR1 = %X(%s fault)\n",
 			iommu_dev->ctx_id, fsr, fsynr0, fsynr1,
 			write ? "write" : "read");
+#endif
 
 		_check_if_freed(iommu_dev, addr, pid);
 
@@ -630,10 +656,12 @@ static int kgsl_iommu_pt_equal(struct kgsl_mmu *mmu,
 	domain_ptbase = iommu_get_pt_base_addr(iommu_pt->domain)
 			& KGSL_IOMMU_CTX_TTBR0_ADDR_MASK;
 
+	/* Only compare the valid address bits of the pt_base */
+	domain_ptbase &= KGSL_IOMMU_CTX_TTBR0_ADDR_MASK;
+
 	pt_base &= KGSL_IOMMU_CTX_TTBR0_ADDR_MASK;
 
 	return (domain_ptbase == pt_base);
-
 }
 
 /*
@@ -645,8 +673,16 @@ static int kgsl_iommu_pt_equal(struct kgsl_mmu *mmu,
 static void kgsl_iommu_destroy_pagetable(struct kgsl_pagetable *pt)
 {
 	struct kgsl_iommu_pt *iommu_pt = pt->priv;
+#ifdef QCT_TEMP_KGSL_PATCH
+	phys_addr_t domain_ptbase = iommu_get_pt_base_addr(iommu_pt->domain);
+#endif
+
 	if (iommu_pt->domain)
 		msm_unregister_domain(iommu_pt->domain);
+
+#ifdef QCT_TEMP_KGSL_PATCH
+	trace_kgsl_pagetable_destroy(domain_ptbase, pt->name);
+#endif
 
 	kfree(iommu_pt);
 	iommu_pt = NULL;

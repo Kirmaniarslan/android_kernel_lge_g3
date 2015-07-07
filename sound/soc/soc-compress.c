@@ -200,6 +200,7 @@ static void close_delayed_work(struct work_struct *work)
 
 static int soc_compr_free(struct snd_compr_stream *cstream)
 {
+#ifdef CONFIG_SND_SOC_WM5110
 	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
 	struct snd_soc_platform *platform = rtd->platform;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
@@ -254,6 +255,7 @@ static int soc_compr_free(struct snd_compr_stream *cstream)
 	}
 
 	mutex_unlock(&rtd->pcm_mutex);
+#endif
 	return 0;
 }
 
@@ -475,12 +477,17 @@ static int soc_compr_set_params_fe(struct snd_compr_stream *cstream,
 	struct snd_soc_pcm_runtime *fe = cstream->private_data;
 	struct snd_pcm_substream *fe_substream = fe->pcm->streams[0].substream;
 	struct snd_soc_platform *platform = fe->platform;
+	struct snd_pcm_hw_params *hw_params;
 	int ret = 0, stream;
 
 	if (cstream->direction == SND_COMPRESS_PLAYBACK)
 		stream = SNDRV_PCM_STREAM_PLAYBACK;
 	else
 		stream = SNDRV_PCM_STREAM_CAPTURE;
+
+	hw_params = kzalloc(sizeof(*hw_params), GFP_KERNEL);
+	if (hw_params == NULL)
+		return -ENOMEM;
 
 	mutex_lock(&fe->card->dpcm_mutex);
 	/* first we call set_params for the platform driver
@@ -599,15 +606,14 @@ static int soc_compr_pointer(struct snd_compr_stream *cstream,
 {
 	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
 	struct snd_soc_platform *platform = rtd->platform;
-	int ret = 0;
 
 	mutex_lock_nested(&rtd->pcm_mutex, rtd->pcm_subclass);
 
 	if (platform->driver->compr_ops && platform->driver->compr_ops->pointer)
-		ret = platform->driver->compr_ops->pointer(cstream, tstamp);
+		 platform->driver->compr_ops->pointer(cstream, tstamp);
 
 	mutex_unlock(&rtd->pcm_mutex);
-	return ret;
+	return 0;
 }
 
 static int soc_compr_copy(struct snd_compr_stream *cstream,
@@ -696,7 +702,16 @@ int soc_new_compress(struct snd_soc_pcm_runtime *rtd, int num)
 	/* check client and interface hw capabilities */
 	snprintf(new_name, sizeof(new_name), "%s %s-%d",
 			rtd->dai_link->stream_name, codec_dai->name, num);
+#ifdef CONFIG_SND_SOC_WM5110
+	if (codec_dai->driver->playback.channels_min)
+		direction = SND_COMPRESS_PLAYBACK;
+	else if (codec_dai->driver->capture.channels_min)
+		direction = SND_COMPRESS_CAPTURE;
+	else
+		return -EINVAL;
+#else
 	direction = SND_COMPRESS_PLAYBACK;
+#endif
 	compr = kzalloc(sizeof(*compr), GFP_KERNEL);
 	if (compr == NULL) {
 		snd_printk(KERN_ERR "Cannot allocate compr\n");
